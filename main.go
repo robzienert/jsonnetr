@@ -32,6 +32,11 @@ func main() {
 	}
 	printHelp()
 
+	if len(os.Args) == 0 {
+		printHelp()
+		os.Exit(1)
+	}
+
 	cwd := getCWD()
 	withWorkspace(func(ws string) {
 		resolvers := resolverRegistry{
