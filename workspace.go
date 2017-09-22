@@ -7,12 +7,10 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 
 	"github.com/Sirupsen/logrus"
 )
-
-// key: original import name, value: new import name
-var importMap = map[string]Import{}
 
 func getCWD() string {
 	cwd, err := filepath.Abs(filepath.Dir(os.Args[0]))
@@ -23,10 +21,20 @@ func getCWD() string {
 	return cwd
 }
 
+// TODO rz - make unbad
 func copyFileToWorkspace(cwd string, rootFilename string, workspacePath string, localPath string) string {
-	// TODO rz - make un-bad.
-	srcPath := path.Join(cwd, localPath, rootFilename)
-	destPath := path.Join(workspacePath, localPath, rootFilename)
+	var (
+		srcPath  string
+		destPath string
+	)
+	if strings.HasPrefix(rootFilename, localPath) {
+		srcPath = path.Join(cwd, rootFilename)
+		destPath = path.Join(workspacePath, rootFilename)
+	} else {
+		srcPath = path.Join(cwd, localPath, rootFilename)
+		destPath = path.Join(workspacePath, localPath, rootFilename)
+	}
+
 	logrus.WithFields(logrus.Fields{
 		"src":  srcPath,
 		"dest": destPath,
@@ -69,17 +77,31 @@ func withWorkspace(action func(ws string)) {
 	}
 	defer func() {
 		logrus.Debug("Cleaning up workspace")
-		// os.RemoveAll(ws)
+		os.RemoveAll(ws)
 	}()
 	logrus.WithField("path", ws).Debug("Created workspace")
 
 	action(ws)
 }
 
-func importMapKeys() []string {
-	keys := make([]string, 0, len(importMap))
-	for k := range importMap {
-		keys = append(keys, k)
+func getRootWorkspaceFile(rootFilename string) string {
+	for _, s := range sources {
+		if s.OriginalPath == rootFilename {
+			return s.WorkspacePath
+		}
 	}
-	return keys
+	fmt.Fprintf(os.Stderr, "jsonnetr could not find root workspace file: %s\n", rootFilename)
+	os.Exit(1)
+	return "" // Dumb go.
+}
+
+func getWorkspaceImportByOriginalName(name string) string {
+	for _, s := range sources {
+		if s.OriginalPath == name {
+			return s.WorkspacePath
+		}
+	}
+	fmt.Fprintf(os.Stderr, "jsonnetr could not find workspace file for import: %s\n", name)
+	os.Exit(1)
+	return ""
 }

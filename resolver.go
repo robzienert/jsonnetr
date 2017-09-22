@@ -2,21 +2,25 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"io/ioutil"
+	"net/http"
 	"net/url"
 	"os"
 	"path"
-	"regexp"
 	"strings"
 
 	"github.com/Sirupsen/logrus"
 )
 
-const (
-	importPattern = "import\\s\"([a-zA-Z0-9_\\-\\?@\\.]+)\""
-)
+var sources = []Source{}
 
-var importMatcher = regexp.MustCompile(importPattern)
+type Source struct {
+	OriginalPath  string
+	WorkspacePath string
+	Data          []byte
+	Imports       []string
+}
 
 func findAllImports(filename string) []string {
 	dat, err := ioutil.ReadFile(filename)
@@ -41,6 +45,7 @@ func findAllImports(filename string) []string {
 type Resolver interface {
 	Name() string
 	Supports(filepath string) bool
+	// TODO this signature is dumb
 	Resolve(filepath string) (string, []byte, error)
 }
 
@@ -48,35 +53,33 @@ type resolverRegistry struct {
 	resolvers []Resolver
 }
 
-func (registry resolverRegistry) ResolveAll(imports []string, path []string) {
-	// TODO detect cycles
-	for _, imp := range imports {
-		if _, ok := importMap[imp]; ok {
-			continue
-		}
-
-		for _, r := range registry.resolvers {
-			if r.Supports(imp) {
-				workspaceFilepath, contents, err := r.Resolve(imp)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "jsonnetr could not resolve import '%s' with resolver '%s', at path '%s': %s", imp, r.Name(), strings.Join(path, "->"), err.Error())
-					os.Exit(1)
-				}
-				importMap[imp] = Import{
-					WorkingPath: workspaceFilepath,
-					Data:        contents,
-				}
-				p := path
-				p = append(path, imp)
-
-				registry.ResolveAll(findAllImports(workspaceFilepath), p)
-				goto nextImport
+func (registry resolverRegistry) ResolveAll(sourceFilename string, path []string) {
+	// TODO don't resolve if it already exists in sources list
+	for _, r := range registry.resolvers {
+		if r.Supports(sourceFilename) {
+			workspaceFilepath, contents, err := r.Resolve(sourceFilename)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "jsonnetr could not resolve source file '%s' with resolver '%s' at path '%s': %s", sourceFilename, r.Name(), strings.Join(path, "->"), err.Error())
+				os.Exit(1)
 			}
+			imports := findAllImports(workspaceFilepath)
+			sources = append(sources, Source{
+				OriginalPath:  sourceFilename,
+				WorkspacePath: workspaceFilepath,
+				Data:          contents,
+				Imports:       imports,
+			})
+
+			for _, imp := range imports {
+				// TODO rz - only resolve if not already resolved
+				registry.ResolveAll(imp, append(path, sourceFilename))
+			}
+			return
 		}
-		fmt.Fprintf(os.Stderr, "jsonnetr could not find resolver for import '%s' at path '%s'\n", imp, strings.Join(path, "->"))
-		os.Exit(1)
-	nextImport:
 	}
+
+	fmt.Fprintf(os.Stderr, "jsonnsetr could not find resolver for source '%s' at path '%s'\n", sourceFilename, strings.Join(path, "->"))
+	os.Exit(1)
 }
 
 type localFileResolver struct {
@@ -106,4 +109,48 @@ func (r localFileResolver) Resolve(filepath string) (string, []byte, error) {
 	}
 
 	return newPath, dat, nil
+}
+
+type httpResolver struct {
+	workspacePath string
+}
+
+func (r httpResolver) Name() string {
+	return "http"
+}
+
+func (r httpResolver) Supports(filepath string) bool {
+	u, err := url.Parse(filepath)
+	if err != nil {
+		return false
+	}
+	return u.Scheme == "http" || u.Scheme == "https"
+}
+
+func (r httpResolver) Resolve(filepath string) (string, []byte, error) {
+	resp, err := http.Get(filepath)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, fmt.Errorf("jsonnetr failed getting remote http file: %s", err.Error()))
+		return "", nil, err
+	}
+	defer resp.Body.Close()
+
+	f, err := ioutil.TempFile(r.workspacePath, "http")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, fmt.Errorf("jsonnetr failed creating temp file for http import: %s", err.Error()))
+		return "", nil, err
+	}
+
+	if _, err := io.Copy(f, resp.Body); err != nil {
+		fmt.Fprintln(os.Stderr, fmt.Errorf("jsonnetr failed copying http import contents to file: %s", err.Error()))
+		return f.Name(), nil, err
+	}
+
+	dat, err := ioutil.ReadFile(f.Name())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, fmt.Errorf("jsonnetr failed reading file: %s", err.Error()))
+		return f.Name(), nil, err
+	}
+
+	return f.Name(), dat, nil
 }
