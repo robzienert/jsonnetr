@@ -13,6 +13,33 @@ $ jsonnetr spinnaker.jsonnet
 
 ```json
 {
+   "chaosMonkey": {
+      "enabled": true,
+      "exceptions": [
+         {
+            "account": "mgmt",
+            "detail": "*",
+            "region": "*",
+            "stack": "*"
+         },
+         {
+            "account": "test",
+            "detail": "*",
+            "region": "*",
+            "stack": "*"
+         },
+         {
+            "account": "prod",
+            "detail": "*",
+            "region": "*",
+            "stack": "*"
+         }
+      ],
+      "grouping": "cluster",
+      "meanTimeBetweenKillsInWorkDays": 2,
+      "minTimeBetweenKillsInWorkDays": 1,
+      "regionsAreIndependent": true
+   },
    "dataSources": {
       "disabled": [ ],
       "enabled": [
@@ -22,38 +49,13 @@ $ jsonnetr spinnaker.jsonnet
    "description": "orchestration service for spinnaker",
    "email": "example@example.com",
    "enableRestartRunningExecutions": false,
-   "enabled": true,
-   "exceptions": [
-      {
-         "account": "mgmt",
-         "detail": "*",
-         "region": "*",
-         "stack": "*"
-      },
-      {
-         "account": "test",
-         "detail": "*",
-         "region": "*",
-         "stack": "*"
-      },
-      {
-         "account": "prod",
-         "detail": "*",
-         "region": "*",
-         "stack": "*"
-      }
-   ],
    "group": "Spinnaker",
-   "grouping": "cluster",
    "instancePort": 7001,
-   "meanTimeBetweenKillsInWorkDays": 2,
-   "minTimeBetweenKillsInWorkDays": 1,
    "name": "orca",
    "owner": "Delivery Engineering",
    "pdApiKey": "abcd1234",
    "pipelines": [ ],
    "propertyRolloutConfigId": "abcd1234",
-   "regionsAreIndependent": true,
    "repoProjectKey": "SPKR",
    "repoSlug": "orca-nflx",
    "repoType": "stash",
