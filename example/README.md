@@ -5,6 +5,8 @@ application json definition. The root file is `spinnaker.jsonnet`, which has
 a few local-file imports, as well as a remote HTTP import. Running `jsonnetr`
 will yield the following output.
 
+The remote HTTP import just includes a `pipelines` key with an empty list.
+
 ```
 $ jsonnetr spinnaker.jsonnet
 ```
